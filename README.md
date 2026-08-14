@@ -18,7 +18,8 @@ $ lncli listchannels | reorgdepth.py
 
 4 channels, 35,277,216 sat total capacity
 2 at the 3-confirmation floor
-3 below the BOLT-recommended 6 (18,500,000 sat, 52% of your capacity)
+3 below the conventional 6 (18,500,000 sat, 52% of your capacity)
+all 4 are below BOLT #5's 100-block *irrevocably resolved*, as is every implementation except CLN
 ```
 
 Or without a node at all:
@@ -26,7 +27,8 @@ Or without a node at all:
 ```console
 $ reorgdepth.py --capacity 5000000
 5,000,000 sat  ->  3 confirmations before the close is treated as final
-          BOLT #5 recommends 6. You cannot raise this on a release build (see lnd#11072).
+          Below the conventional 6. You cannot raise this on a release build (see lnd#11072).
+          For scale: BOLT #5 considers an output *irrevocably resolved* at 100 blocks.
 ```
 
 ## Install
@@ -57,6 +59,13 @@ channels — not because anyone was careless, but because the scaling is a
 deliberate tradeoff that spends your waiting time where the money is. That's
 defensible. It's just worth knowing which number you're relying on, which is
 what this prints.
+
+**One correction to that framing, which I got wrong at first and checked afterwards:**
+the BOLT spec does not actually recommend 6 confirmations for close safety. The only 6
+in the whole spec is BOLT #7's gate on `channel_announcement` — a gossip rule. BOLT #5's
+finality number is 100 blocks (*irrevocably resolved*), and every implementation except
+CLN is far below it. So 6 is a convention, not a requirement, and this tool labels it as
+one. The details, with the spec text quoted, are in [ARITHMETIC.md](ARITHMETIC.md).
 
 Every constant is quoted from source in [ARITHMETIC.md](ARITHMETIC.md), with the
 build tags that matter, so you can diff it against your own checkout instead of
