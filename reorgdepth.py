@@ -31,7 +31,12 @@ MAX_CHANNEL_SIZE = 16_777_215      # sat; matches MaxBtcFundingAmount
 # --- lnwallet/confscale_prod.go --------------------------------------------
 MIN_CLOSE_CONFS = 3
 
-BOLT_RECOMMENDED = 6
+# The widely-cited "6 confirmations" is a convention, not a BOLT safety requirement.
+# The only 6 in the whole spec is BOLT #7's gate on `channel_announcement` (a gossip
+# rule). BOLT #5's actual finality number is 100 blocks — *irrevocably resolved* —
+# and the MUST-monitor obligation runs until then. See ARITHMETIC.md.
+CONVENTIONAL_CONFS = 6
+BOLT5_IRREVOCABLE = 100
 
 
 def scale_num_confs(chan_amt_sat, push_amt_msat=0):
@@ -105,9 +110,11 @@ def main():
             raise SystemExit("--capacity needs a number in satoshis")
         n = close_confs(cap)
         print(f"{sats(cap)} sat  ->  {n} confirmation{'s' if n != 1 else ''} before the close is treated as final")
-        if n < BOLT_RECOMMENDED:
-            print(f"          BOLT #5 recommends {BOLT_RECOMMENDED}. You cannot raise this on a release build "
-                  f"(see lnd#11072).")
+        if n < CONVENTIONAL_CONFS:
+            print(f"          Below the conventional {CONVENTIONAL_CONFS}. You cannot raise this on a "
+                  f"release build (see lnd#11072).")
+        print(f"          For scale: BOLT #5 considers an output *irrevocably resolved* at "
+              f"{BOLT5_IRREVOCABLE} blocks.")
         return 0
 
     paths = [a for a in args if not a.startswith("-")]
@@ -131,20 +138,22 @@ def main():
     print("-" * (w + 30))
     for c in chans:
         n = close_confs(c["capacity"])
-        flag = "  <- floor" if n == MIN_CLOSE_CONFS else ("" if n >= BOLT_RECOMMENDED else "  <- below BOLT 6")
+        flag = "  <- floor" if n == MIN_CLOSE_CONFS else ("" if n >= CONVENTIONAL_CONFS else "  <- below 6")
         label = c["alias"] or c["peer"]
         print(f"{sats(c['capacity']):>{w}}  {n:>5}  {label:<20}{flag}")
 
     total = sum(c["capacity"] for c in chans)
     at_floor = [c for c in chans if close_confs(c["capacity"]) == MIN_CLOSE_CONFS]
-    below = [c for c in chans if close_confs(c["capacity"]) < BOLT_RECOMMENDED]
+    below = [c for c in chans if close_confs(c["capacity"]) < CONVENTIONAL_CONFS]
     val_below = sum(c["capacity"] for c in below)
 
     print()
     print(f"{len(chans)} channels, {sats(total)} sat total capacity")
     print(f"{len(at_floor)} at the {MIN_CLOSE_CONFS}-confirmation floor")
-    print(f"{len(below)} below the BOLT-recommended {BOLT_RECOMMENDED} "
+    print(f"{len(below)} below the conventional {CONVENTIONAL_CONFS} "
           f"({sats(val_below)} sat, {100 * val_below // total if total else 0}% of your capacity)")
+    print(f"all {len(chans)} are below BOLT #5's {BOLT5_IRREVOCABLE}-block *irrevocably resolved*, "
+          f"as is every implementation except CLN")
 
     if below:
         print()
