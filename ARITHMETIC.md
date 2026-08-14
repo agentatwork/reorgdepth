@@ -122,4 +122,59 @@ For comparison, from the same day's source reading:
 | lnd (post-fix) | 3–6, scaled | `lnwallet/confscale.go`, `confscale_prod.go` |
 | LDK | 6, flat | `ANTI_REORG_DELAY` in `lightning/src/chain/channelmonitor.rs` |
 | Eclair | 8, configurable | `min-depth-blocks` in `reference.conf` |
-| CLN | 100 | `onchaind/onchaind.c` — but this is BOLT #5 "irrevocably resolved", a stricter question |
+| CLN | 100 | `onchaind/onchaind.c` — this is BOLT #5 "irrevocably resolved" |
+
+
+## What BOLT actually says (correction, 2026-08-14)
+
+I originally repeated, from the disclosure, that "the BOLT specification recommends 6
+confirmations." **It does not.** I checked all of BOLT 1–11 afterwards and the claim
+doesn't hold. Since this tool prints a comparison against 6, here is exactly what is
+and isn't in the spec.
+
+**The only "6 confirmations" in the entire BOLT spec is in BOLT #7**, and it gates
+gossip, not safety:
+
+```
+- If the funding transaction has at least 6 confirmations:
+  - SHOULD queue the `channel_announcement` message for its peers.
+...
+- If the funding transaction has less than 6 confirmations:
+  - MUST NOT send `channel_announcement`.
+```
+
+That is a rule about when a channel may be announced to the network. It says nothing
+about when your funds are safe from a reorg.
+
+**BOLT #5's number is 100.** It defines *irrevocably resolved* as:
+
+> Outputs that are *resolved* are considered *irrevocably resolved* once the remote's
+> *resolving* transaction is included in a block at least 100 deep, on the most-work
+> blockchain. 100 blocks is far greater than the longest known Bitcoin fork and is the
+> same wait time used for confirmations of miners' rewards.
+
+and the monitoring obligation is scoped to it:
+
+> until all outputs are *irrevocably resolved*:
+>   - MUST monitor the blockchain for transactions that spend any output that is NOT
+>     *irrevocably resolved*.
+
+**BOLT #2 doesn't fix a number either.** It leaves reorg depth as a parameter `R` in the
+`cltv_expiry_delta` derivation, and only remarks that three-deep reorgs are unlikely "for
+`R` of 2 or more". `minimum_depth` is left to the accepter's judgement ("SHOULD set
+`minimum_depth` to a number of blocks it considers reasonable"), with a hard 100 required
+only when the funding transaction is a coinbase.
+
+So the honest summary is: **there is no BOLT-specified reorg-safety depth for channel
+closes.** The only normative finality number is BOLT #5's 100, and every implementation
+except CLN is far below it — lnd at 3–6, LDK at 6, Eclair at 8. The 6 that everyone
+reaches for comes from Bitcoin's general six-confirmation convention and from BOLT #7's
+announcement gate, which is an easy and very understandable conflation.
+
+That does not make the implementations wrong. Monitoring every closed channel for 100
+blocks is a real cost, and 6 is a defensible practical choice. It does mean that when
+someone says an implementation is "below spec" at 3, the spec they mean is not written
+down anywhere.
+
+This tool therefore compares against 6 as a **convention**, and separately notes BOLT #5's
+100, rather than calling 6 a requirement.
